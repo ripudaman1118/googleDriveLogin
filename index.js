@@ -1,9 +1,11 @@
 const express = require("express");
 const { google } = require("googleapis");
+const fs = require("fs");
+const path = require("path");
 
 const app = express();
 
-// ====== Google OAuth Config ======
+// ====== Config ======
 const CLIENT_ID = process.env.DRIVE_CLIENT_ID;
 const CLIENT_SECRET = process.env.DRIVE_CLIENT_SECRET;
 const REDIRECT_URI = process.env.DRIVE_REDIRECT_URI;
@@ -15,6 +17,48 @@ const oAuth2Client = new google.auth.OAuth2(
   CLIENT_SECRET,
   REDIRECT_URI
 );
+
+const TOKEN_PATH = path.join(__dirname, "tokens.json");
+
+// ====== Helper Functions ======
+
+// Save tokens safely without overwriting refresh_token
+const saveTokens = (newTokens) => {
+  let oldTokens = {};
+  if (fs.existsSync(TOKEN_PATH)) {
+    oldTokens = JSON.parse(fs.readFileSync(TOKEN_PATH));
+  }
+
+  const tokens = {
+    ...oldTokens,
+    ...newTokens,
+    refresh_token: newTokens.refresh_token || oldTokens.refresh_token, // keep old refresh token
+  };
+
+  fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens, null, 2));
+  oAuth2Client.setCredentials(tokens);
+  return tokens;
+};
+
+// Get valid access token (auto refresh if expired)
+const getValidAccessToken = async () => {
+  if (!fs.existsSync(TOKEN_PATH)) throw new Error("Login first at /login");
+
+  const tokens = JSON.parse(fs.readFileSync(TOKEN_PATH));
+  oAuth2Client.setCredentials(tokens);
+
+  if (!tokens.expiry_date || tokens.expiry_date < Date.now()) {
+    const { credentials } = await oAuth2Client.refreshAccessToken();
+    saveTokens({
+      access_token: credentials.access_token,
+      expiry_date: credentials.expiry_date,
+      refresh_token: credentials.refresh_token,
+    });
+    return credentials.access_token;
+  }
+
+  return tokens.access_token;
+};
 
 // ====== Routes ======
 
@@ -28,79 +72,47 @@ app.get("/login", (req, res) => {
   res.redirect(authUrl);
 });
 
-// 2️⃣ OAuth callback route
+// 2️⃣ OAuth callback
 app.get("/oauth2callback", async (req, res) => {
   const code = req.query.code;
   if (!code) return res.send("❌ No code received.");
 
   try {
     const { tokens } = await oAuth2Client.getToken(code);
+    saveTokens(tokens);
+res.send(`
+  <h2>✅ Google Drive Login Successful!</h2>
+  <p><b>Access Token:</b> ${tokens.access_token}</p>
+  <p><b>Refresh Token:</b> ${tokens.refresh_token || "Already exists"}</p>
+  <p><b>Expiry Date:</b> ${new Date(tokens.expiry_date).toLocaleString()}</p>
+  <hr>
+  <a href='/'>➡ Go to Upload Form</a>
+`);
 
-    res.send(`
-      <html>
-        <head>
-          <title>Google Drive Token</title>
-          <style>
-            body { 
-              font-family: Arial, sans-serif; 
-              background: #f9f9f9; 
-              padding: 40px; 
-              color: #333;
-            }
-            h2 { color: #0b8043; }
-            pre { 
-              background: #fff; 
-              border: 1px solid #ddd; 
-              padding: 15px; 
-              border-radius: 8px; 
-              font-size: 14px; 
-              white-space: pre-wrap;
-              word-break: break-word;
-            }
-            button {
-              margin-top: 10px;
-              padding: 10px 15px;
-              background: #0b8043;
-              color: white;
-              border: none;
-              border-radius: 5px;
-              cursor: pointer;
-            }
-          </style>
-        </head>
-        <body>
-          <h2>✅ Google Drive Login Successful!</h2>
-          <p>Here are your tokens — copy and save them safely:</p>
-          <pre>${JSON.stringify(tokens, null, 2)}</pre>
-          <button onclick="navigator.clipboard.writeText(JSON.stringify(${JSON.stringify(tokens)}))">
-            📋 Copy Tokens
-          </button>
-          <hr/>
-          <p>Go to <a href="/">Home</a></p>
-        </body>
-      </html>
-    `);
   } catch (err) {
     console.error(err);
     res.send("❌ OAuth Error: " + err.message);
   }
 });
 
-// 3️⃣ Home route
+// 3️⃣ Manual refresh (optional)
+app.get("/refresh-token", async (req, res) => {
+  try {
+    const token = await getValidAccessToken();
+    res.send(`✅ New Access Token: ${token}`);
+  } catch (err) {
+    console.error(err);
+    res.send("❌ Refresh failed: " + err.message);
+  }
+});
+
+// 4️⃣ Upload Form
 app.get("/", (req, res) => {
-  res.send(`
-    <h2>🚀 Google Drive Upload Login</h2>
-    <p>Click below to login and get your tokens.</p>
-    <a href="/login">
-      <button style="padding:10px 15px;background:#1a73e8;color:#fff;border:none;border-radius:5px;cursor:pointer">
-        Login with Google
-      </button>
-    </a>
-  `);
+  res.sendFile(path.join(__dirname, "index.html"));
 });
 
 // ====== Start Server ======
-const PORT = process.env.PORT || 5050;
-app.listen(PORT, () =>
-  console.log(`🚀 Server running at http://localhost:${PORT}`)
-);
+const PORT = 5050;
+app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
+
+module.exports = app;
