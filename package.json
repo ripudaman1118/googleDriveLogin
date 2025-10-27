@@ -2,6 +2,7 @@
   "name": "googledrivefilesuploadnode",
   "version": "1.0.0",
   "description": "Upload Files to Google Drive in NodeJs",
+  "type": "commonjs",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -24,3 +25,4 @@
     "multer": "^1.4.5-lts.1"
   }
 }
+
