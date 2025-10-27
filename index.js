@@ -83,8 +83,8 @@ app.get("/oauth2callback", async (req, res) => {
 res.send(`
   <h2>✅ Google Drive Login Successful!</h2>
   <p><b>Access Token:</b> ${tokens.access_token}</p>
-  <p><b>Refresh Token:</b> ${tokens.refresh_token || "Already exists"}</p>
-  <p><b>Expiry Date:</b> ${new Date(tokens.expiry_date).toLocaleString()}</p>
+  <p><b>Refresh Token:</b> ${tokens.refresh_token}</p>
+  <p><b>Expiry Date:</b> ${tokens.expiry_date}</p>
   <hr>
   <a href='/'>➡ Go to Upload Form</a>
 `);
@@ -116,3 +116,4 @@ const PORT = 5050;
 app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
 
 module.exports = app;
+
