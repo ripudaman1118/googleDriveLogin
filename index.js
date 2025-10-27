@@ -5,9 +5,10 @@ const path = require("path");
 
 const app = express();
 
-export const CLIENT_ID = process.env.DRIVE_CLIENT_ID;
-export const CLIENT_SECRET = process.env.DRIVE_CLIENT_SECRET;
-export const REDIRECT_URI = process.env.DRIVE_REDIRECT_URI;
+// ====== Config ======
+const CLIENT_ID = process.env.DRIVE_CLIENT_ID;
+const CLIENT_SECRET = process.env.DRIVE_CLIENT_SECRET;
+const REDIRECT_URI = process.env.DRIVE_REDIRECT_URI;
 
 const SCOPES = ["https://www.googleapis.com/auth/drive.file"];
 
@@ -19,9 +20,9 @@ const oAuth2Client = new google.auth.OAuth2(
 
 const TOKEN_PATH = path.join(__dirname, "tokens.json");
 
-// ========== Helper Functions ==========
+// ====== Helper Functions ======
 
-// Save tokens, without overwriting old refresh_token
+// Save tokens safely without overwriting refresh_token
 const saveTokens = (newTokens) => {
   let oldTokens = {};
   if (fs.existsSync(TOKEN_PATH)) {
@@ -39,17 +40,15 @@ const saveTokens = (newTokens) => {
   return tokens;
 };
 
-// Get valid access token, auto-refresh if expired
+// Get valid access token (auto refresh if expired)
 const getValidAccessToken = async () => {
   if (!fs.existsSync(TOKEN_PATH)) throw new Error("Login first at /login");
 
   const tokens = JSON.parse(fs.readFileSync(TOKEN_PATH));
   oAuth2Client.setCredentials(tokens);
 
-  // If access token expired or about to expire
   if (!tokens.expiry_date || tokens.expiry_date < Date.now()) {
     const { credentials } = await oAuth2Client.refreshAccessToken();
-    // Only update access_token & expiry_date, keep old refresh_token
     saveTokens({
       access_token: credentials.access_token,
       expiry_date: credentials.expiry_date,
@@ -61,14 +60,14 @@ const getValidAccessToken = async () => {
   return tokens.access_token;
 };
 
-// ========== Routes ==========
+// ====== Routes ======
 
 // 1️⃣ Login route
 app.get("/login", (req, res) => {
   const authUrl = oAuth2Client.generateAuthUrl({
     access_type: "offline",
     scope: SCOPES,
-    prompt: "consent", // ensures refresh token returned first time
+    prompt: "consent",
   });
   res.redirect(authUrl);
 });
@@ -84,7 +83,7 @@ app.get("/oauth2callback", async (req, res) => {
     res.send(`✅ Login successful!<br>
       Access Token: ${tokens.access_token}<br>
       Refresh Token: ${tokens.refresh_token || "Already exists"}<br>
-      expiry_date: ${tokens.expiry_date}
+      expiry_date: ${tokens.expiry_date}<br>
       Go to <a href='/'>Upload Form</a>`);
   } catch (err) {
     console.error(err);
@@ -92,7 +91,7 @@ app.get("/oauth2callback", async (req, res) => {
   }
 });
 
-// 3️⃣ Refresh access token manually (optional)
+// 3️⃣ Manual refresh (optional)
 app.get("/refresh-token", async (req, res) => {
   try {
     const token = await getValidAccessToken();
@@ -103,12 +102,13 @@ app.get("/refresh-token", async (req, res) => {
   }
 });
 
-// 4️⃣ Upload form
+// 4️⃣ Upload Form
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
-// ========== Start Server ==========
-app.listen(5050, () =>
-  console.log("🚀 Server running at http://localhost:5050")
-);
+// ====== Start Server ======
+const PORT = process.env.PORT || 5050;
+app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
+
+module.exports = app;
